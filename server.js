@@ -143,7 +143,7 @@ app.get('/api/user', authenticateToken, async (req, res) => {
     }
 });
 
-// Save all folders at once
+// Save all folders (including subfolders)
 app.post('/api/user/data', authenticateToken, async (req, res) => {
     try {
         const { folders } = req.body;
@@ -160,6 +160,41 @@ app.post('/api/user/data', authenticateToken, async (req, res) => {
         res.status(500).send({ message: 'Failed to save data' });
     }
 });
+
+// --- FOLDER HELPERS (recursive functions) ---
+const addToParent = (folders, targetId, newFolder) => {
+    for (const f of folders) {
+        if (f.id === targetId) {
+            f.subfolders = f.subfolders || [];
+            f.subfolders.push(newFolder);
+            return true;
+        }
+        if (f.subfolders && addToParent(f.subfolders, targetId, newFolder)) return true;
+    }
+    return false;
+};
+
+const updateFolderRecursively = (folders, id, updates) => {
+    for (const f of folders) {
+        if (f.id === id) {
+            Object.assign(f, updates);
+            return true;
+        }
+        if (f.subfolders && updateFolderRecursively(f.subfolders, id, updates)) return true;
+    }
+    return false;
+};
+
+const deleteFolderRecursively = (folders, id) => {
+    for (let i = 0; i < folders.length; i++) {
+        if (folders[i].id === id) {
+            folders.splice(i, 1);
+            return true;
+        }
+        if (folders[i].subfolders && deleteFolderRecursively(folders[i].subfolders, id)) return true;
+    }
+    return false;
+};
 
 // --- FOLDER ENDPOINTS ---
 app.post('/api/folders', authenticateToken, async (req, res) => {
@@ -179,18 +214,9 @@ app.post('/api/folders', authenticateToken, async (req, res) => {
         };
 
         if (parentId) {
-            const addToParent = (folders, targetId) => {
-                for (const f of folders) {
-                    if (f.id === targetId) {
-                        f.subfolders = f.subfolders || [];
-                        f.subfolders.push(newFolder);
-                        return true;
-                    }
-                    if (f.subfolders && addToParent(f.subfolders, targetId)) return true;
-                }
-                return false;
-            };
-            if (!addToParent(user.folders, parentId)) return res.status(404).json({ message: 'Parent folder not found' });
+            if (!addToParent(user.folders, parentId, newFolder)) {
+                return res.status(404).json({ message: 'Parent folder not found' });
+            }
         } else {
             user.folders.push(newFolder);
         }
@@ -221,18 +247,10 @@ app.put('/api/folders/:folderId', authenticateToken, async (req, res) => {
         const user = await User.findById(req.user.userId);
         if (!user) return res.status(404).json({ message: 'User not found' });
 
-        const updateFolder = (folders, id) => {
-            for (const f of folders) {
-                if (f.id === id) {
-                    Object.assign(f, updates);
-                    return true;
-                }
-                if (f.subfolders && updateFolder(f.subfolders, id)) return true;
-            }
-            return false;
-        };
+        if (!updateFolderRecursively(user.folders, folderId, updates)) {
+            return res.status(404).json({ message: 'Folder not found' });
+        }
 
-        if (!updateFolder(user.folders, folderId)) return res.status(404).json({ message: 'Folder not found' });
         await user.save();
         res.status(200).json({ message: 'Folder updated successfully' });
     } catch (error) {
@@ -247,18 +265,10 @@ app.delete('/api/folders/:folderId', authenticateToken, async (req, res) => {
         const user = await User.findById(req.user.userId);
         if (!user) return res.status(404).json({ message: 'User not found' });
 
-        const deleteFolder = (folders, id) => {
-            for (let i = 0; i < folders.length; i++) {
-                if (folders[i].id === id) {
-                    folders.splice(i, 1);
-                    return true;
-                }
-                if (folders[i].subfolders && deleteFolder(folders[i].subfolders, id)) return true;
-            }
-            return false;
-        };
+        if (!deleteFolderRecursively(user.folders, folderId)) {
+            return res.status(404).json({ message: 'Folder not found' });
+        }
 
-        if (!deleteFolder(user.folders, folderId)) return res.status(404).json({ message: 'Folder not found' });
         await user.save();
         res.status(200).json({ message: 'Folder deleted successfully' });
     } catch (error) {
