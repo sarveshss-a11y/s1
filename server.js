@@ -12,12 +12,12 @@ const port = process.env.PORT || 3000;
 // --- CORS CONFIG ---
 app.use(cors({
     origin: [
-        'https://sarvesh-e9i2.onrender.com', // Your frontend domain
-        'https://sarveshbackend.onrender.com', // Your backend domain
+        'https://sarvesh-e9i2.onrender.com',
+        'https://sarveshbackend.onrender.com',
         'http://localhost:3000',
         'http://localhost:3001',
         'http://127.0.0.1:5500',
-        'http://localhost:5500' // Added for local development
+        'http://localhost:5500'
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -216,10 +216,6 @@ const findFolderRecursively = (folders, folderId) => {
     return null;
 };
 
-const findMarkInFolder = (folder, markId) => {
-    return folder.marks.find(mark => mark.id === markId);
-};
-
 // --- FOLDER ENDPOINTS ---
 app.post('/api/folders', authenticateToken, async (req, res) => {
     try {
@@ -316,10 +312,11 @@ app.post('/api/folders/:folderId/marks', authenticateToken, async (req, res) => 
         const newMark = {
             id: Date.now().toString(),
             subject,
-            marksObtained,
-            totalMarks,
+            marksObtained: parseFloat(marksObtained),
+            totalMarks: parseFloat(totalMarks),
             date: date || new Date().toISOString().split('T')[0],
-            createdAt: new Date().toISOString()
+            createdAt: new Date().toISOString(),
+            folderId: folderId // Add folderId to mark for easier reference
         };
 
         folder.marks.push(newMark);
@@ -349,8 +346,8 @@ app.put('/api/folders/:folderId/marks/:markId', authenticateToken, async (req, r
         folder.marks[markIndex] = {
             ...folder.marks[markIndex],
             subject,
-            marksObtained,
-            totalMarks,
+            marksObtained: parseFloat(marksObtained),
+            totalMarks: parseFloat(totalMarks),
             date: date || folder.marks[markIndex].date,
             updatedAt: new Date().toISOString()
         };
