@@ -16,7 +16,8 @@ app.use(cors({
         'https://sarveshbackend.onrender.com', // Your backend domain
         'http://localhost:3000',
         'http://localhost:3001',
-        'http://127.0.0.1:5500'
+        'http://127.0.0.1:5500',
+        'http://localhost:5500' // Added for local development
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -123,7 +124,12 @@ app.post('/api/login', async (req, res) => {
         if (!isMatch) return res.status(401).send({ message: 'Invalid username or password' });
 
         const token = createToken({ userId: user._id, username: user.username });
-        res.status(200).send({ message: 'Logged in successfully', token, user: { username: user.username } });
+        res.status(200).send({ 
+            message: 'Logged in successfully', 
+            token, 
+            user: { username: user.username },
+            folders: user.folders || []
+        });
     } catch (error) {
         console.error('Error during login:', error);
         res.status(500).send({ message: 'Failed to log in' });
@@ -136,7 +142,10 @@ app.get('/api/user', authenticateToken, async (req, res) => {
         const user = await User.findById(req.user.userId).select('-password');
         if (!user) return res.status(404).send({ message: 'User not found' });
 
-        res.status(200).send({ username: user.username, folders: user.folders });
+        res.status(200).send({ 
+            username: user.username,
+            folders: user.folders || []
+        });
     } catch (error) {
         console.error('Error fetching user data:', error);
         res.status(500).send({ message: 'Failed to fetch user data' });
@@ -154,7 +163,7 @@ app.post('/api/user/data', authenticateToken, async (req, res) => {
         ).select('-password');
 
         if (!user) return res.status(404).send({ message: 'User not found' });
-        res.status(200).send({ message: 'Folders saved successfully', folders: user.folders });
+        res.status(200).send({ message: 'Data saved successfully', folders: user.folders });
     } catch (error) {
         console.error('Error saving user data:', error);
         res.status(500).send({ message: 'Failed to save data' });
@@ -194,6 +203,21 @@ const deleteFolderRecursively = (folders, id) => {
         if (folders[i].subfolders && deleteFolderRecursively(folders[i].subfolders, id)) return true;
     }
     return false;
+};
+
+const findFolderRecursively = (folders, folderId) => {
+    for (const folder of folders) {
+        if (folder.id === folderId) return folder;
+        if (folder.subfolders) {
+            const found = findFolderRecursively(folder.subfolders, folderId);
+            if (found) return found;
+        }
+    }
+    return null;
+};
+
+const findMarkInFolder = (folder, markId) => {
+    return folder.marks.find(mark => mark.id === markId);
 };
 
 // --- FOLDER ENDPOINTS ---
@@ -274,6 +298,193 @@ app.delete('/api/folders/:folderId', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('Error deleting folder:', error);
         res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+// --- MARKS ENDPOINTS ---
+app.post('/api/folders/:folderId/marks', authenticateToken, async (req, res) => {
+    try {
+        const { folderId } = req.params;
+        const { subject, marksObtained, totalMarks, date } = req.body;
+        
+        const user = await User.findById(req.user.userId);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        const folder = findFolderRecursively(user.folders, folderId);
+        if (!folder) return res.status(404).json({ message: 'Folder not found' });
+
+        const newMark = {
+            id: Date.now().toString(),
+            subject,
+            marksObtained,
+            totalMarks,
+            date: date || new Date().toISOString().split('T')[0],
+            createdAt: new Date().toISOString()
+        };
+
+        folder.marks.push(newMark);
+        await user.save();
+
+        res.status(201).json({ message: 'Marks added successfully', mark: newMark });
+    } catch (error) {
+        console.error('Error adding marks:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+app.put('/api/folders/:folderId/marks/:markId', authenticateToken, async (req, res) => {
+    try {
+        const { folderId, markId } = req.params;
+        const { subject, marksObtained, totalMarks, date } = req.body;
+        
+        const user = await User.findById(req.user.userId);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        const folder = findFolderRecursively(user.folders, folderId);
+        if (!folder) return res.status(404).json({ message: 'Folder not found' });
+
+        const markIndex = folder.marks.findIndex(mark => mark.id === markId);
+        if (markIndex === -1) return res.status(404).json({ message: 'Mark not found' });
+
+        folder.marks[markIndex] = {
+            ...folder.marks[markIndex],
+            subject,
+            marksObtained,
+            totalMarks,
+            date: date || folder.marks[markIndex].date,
+            updatedAt: new Date().toISOString()
+        };
+
+        await user.save();
+        res.status(200).json({ message: 'Marks updated successfully', mark: folder.marks[markIndex] });
+    } catch (error) {
+        console.error('Error updating marks:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+app.delete('/api/folders/:folderId/marks/:markId', authenticateToken, async (req, res) => {
+    try {
+        const { folderId, markId } = req.params;
+        const user = await User.findById(req.user.userId);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        const folder = findFolderRecursively(user.folders, folderId);
+        if (!folder) return res.status(404).json({ message: 'Folder not found' });
+
+        const markIndex = folder.marks.findIndex(mark => mark.id === markId);
+        if (markIndex === -1) return res.status(404).json({ message: 'Mark not found' });
+
+        folder.marks.splice(markIndex, 1);
+        await user.save();
+
+        res.status(200).json({ message: 'Marks deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting marks:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+// --- ADDITIONAL ENDPOINTS FOR FRONTEND INTEGRATION ---
+
+// Get user profile
+app.get('/api/user/profile', authenticateToken, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.userId).select('-password');
+        if (!user) return res.status(404).send({ message: 'User not found' });
+
+        res.status(200).send({ 
+            username: user.username,
+            createdAt: user.createdAt
+        });
+    } catch (error) {
+        console.error('Error fetching user profile:', error);
+        res.status(500).send({ message: 'Failed to fetch user profile' });
+    }
+});
+
+// Update username
+app.put('/api/user/username', authenticateToken, async (req, res) => {
+    try {
+        const { username } = req.body;
+        if (!username || username.trim() === '') {
+            return res.status(400).send({ message: 'Username is required' });
+        }
+
+        const existingUser = await User.findOne({ username });
+        if (existingUser) return res.status(400).send({ message: 'Username already exists' });
+
+        const user = await User.findByIdAndUpdate(
+            req.user.userId,
+            { username },
+            { new: true }
+        ).select('-password');
+
+        if (!user) return res.status(404).send({ message: 'User not found' });
+
+        res.status(200).send({ 
+            message: 'Username updated successfully',
+            username: user.username
+        });
+    } catch (error) {
+        console.error('Error updating username:', error);
+        res.status(500).send({ message: 'Failed to update username' });
+    }
+});
+
+// Update password
+app.put('/api/user/password', authenticateToken, async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+        if (!currentPassword || !newPassword) {
+            return res.status(400).send({ message: 'Current password and new password are required' });
+        }
+
+        const user = await User.findById(req.user.userId);
+        if (!user) return res.status(404).send({ message: 'User not found' });
+
+        const isMatch = await bcrypt.compare(currentPassword, user.password);
+        if (!isMatch) return res.status(401).send({ message: 'Current password is incorrect' });
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        user.password = hashedPassword;
+        await user.save();
+
+        res.status(200).send({ message: 'Password updated successfully' });
+    } catch (error) {
+        console.error('Error updating password:', error);
+        res.status(500).send({ message: 'Failed to update password' });
+    }
+});
+
+// Delete account
+app.delete('/api/user', authenticateToken, async (req, res) => {
+    try {
+        const user = await User.findByIdAndDelete(req.user.userId);
+        if (!user) return res.status(404).send({ message: 'User not found' });
+
+        res.status(200).send({ message: 'Account deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting account:', error);
+        res.status(500).send({ message: 'Failed to delete account' });
+    }
+});
+
+// Clear all data
+app.delete('/api/clear-data', authenticateToken, async (req, res) => {
+    try {
+        const user = await User.findByIdAndUpdate(
+            req.user.userId,
+            { folders: [] },
+            { new: true }
+        );
+        
+        if (!user) return res.status(404).send({ message: 'User not found' });
+        
+        res.status(200).send({ message: 'All data cleared successfully' });
+    } catch (error) {
+        console.error('Error clearing data:', error);
+        res.status(500).send({ message: 'Failed to clear data' });
     }
 });
 
