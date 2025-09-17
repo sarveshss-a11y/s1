@@ -10,21 +10,42 @@ require('dotenv').config();
 const app = express();
 const port = process.env.PORT || 3000;
 
-// --- CORS CONFIG ---
+// Allowed origins list (update if you add more domains)
+const allowedOrigins = [
+    'https://sarvesh-e9i2.onrender.com',
+    'https://sarveshbackend.onrender.com',
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:5500',
+    'http://localhost:5500'
+];
+
+// --- CORS CONFIG (express cors) ---
 app.use(cors({
-    origin: [
-        'https://sarvesh-e9i2.onrender.com',
-        'https://sarveshbackend.onrender.com',
-        'http://localhost:3000',
-        'http://localhost:3001',
-        'http://127.0.0.1:5500',
-        'http://localhost:5500'
-    ],
+    origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.options('*', cors());
+
+// --- Explicit CORS middleware (ensures proper headers on platforms like Render) ---
+app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && allowedOrigins.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Vary', 'Origin');
+    }
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+    next();
+});
+
 app.use(express.json());
 
 // Ensure public directory exists (so catch-all can serve an index if needed)
