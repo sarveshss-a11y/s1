@@ -12,8 +12,8 @@ const port = process.env.PORT || 3000;
 
 // Allowed origins list (update if you add more domains)
 const allowedOrigins = [
-    'https://sarvesh-e9i2.onrender.com',
-    'https://sarveshbackend.onrender.com',
+    'https://mymarktrackerbysarvesh.onrender.com',
+    'https://mymarktrackerbackend.onrender.com',
     'http://localhost:3000',
     'http://localhost:3001',
     'http://127.0.0.1:5500',
