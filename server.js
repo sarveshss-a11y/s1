@@ -382,6 +382,43 @@ app.delete('/api/folders/:folderId/marks/:markId', authenticateToken, async (req
     }
 });
 
+// --- IMPORT/EXPORT ENDPOINTS ---
+app.get('/api/export-data', authenticateToken, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.userId).select('-password');
+        if (!user) return res.status(404).send({ message: 'User not found' });
+
+        const exportData = {
+            username: user.username,
+            folders: user.folders,
+            exportedAt: new Date().toISOString()
+        };
+
+        res.setHeader('Content-Disposition', 'attachment; filename=marks-explorer-data.json');
+        res.setHeader('Content-Type', 'application/json');
+        res.status(200).send(exportData);
+    } catch (error) {
+        console.error('Error exporting data:', error);
+        res.status(500).send({ message: 'Failed to export data' });
+    }
+});
+
+app.post('/api/import-data', authenticateToken, async (req, res) => {
+    try {
+        const { folders } = req.body;
+        const user = await User.findById(req.user.userId);
+        if (!user) return res.status(404).send({ message: 'User not found' });
+
+        user.folders = folders || [];
+        await user.save();
+
+        res.status(200).send({ message: 'Data imported successfully', folders: user.folders });
+    } catch (error) {
+        console.error('Error importing data:', error);
+        res.status(500).send({ message: 'Failed to import data' });
+    }
+});
+
 // --- ADDITIONAL ENDPOINTS FOR FRONTEND INTEGRATION ---
 
 // Get user profile
