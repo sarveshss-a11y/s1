@@ -74,13 +74,32 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/marks_explo
     });
 
 // --- SCHEMA ---
-const userSchema = new mongoose.Schema({
-    username: { type: String, required: true, unique: true },
-    password: { type: String, required: true },
-    // folders is an array of folder objects; each folder may have subfolders and marks
-    folders: { type: Array, default: [] },
-    createdAt: { type: Date, default: Date.now }
+const markSchema = new mongoose.Schema({
+  id: String,
+  subject: String,
+  marksObtained: Number,
+  totalMarks: Number,
+  date: String,
+  createdAt: String,
+  folderId: String
 });
+
+const folderSchema = new mongoose.Schema({
+  id: String,
+  name: String,
+  marks: [markSchema],
+  subfolders: [this],
+  createdAt: String,
+  collapsed: Boolean
+});
+
+const userSchema = new mongoose.Schema({
+  username: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  folders: [folderSchema],
+  createdAt: { type: Date, default: Date.now }
+});
+
 const User = mongoose.model('User', userSchema);
 
 // --- SIMPLE TOKEN HELPERS (Base64 JSON) ---
